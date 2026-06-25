@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>La cantina del Piantavigna</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;700&family=League+Spartan:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'League Spartan', sans-serif;
+            background-color: #ffffff;
+            color: #000000;
+        }
+        .font-piantavigna {
+            font-family: 'Antonio', sans-serif;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 max-w-4xl mx-auto">
+
+    <!-- HEADER -->
+    <header class="text-center my-8 border-b-2 border-black pb-6">
+        <h1 class="font-piantavigna text-5xl md:text-7xl text-black tracking-wider font-bold leading-none">piantavigna</h1>
+        <h2 class="font-piantavigna text-xl md:text-2xl text-black tracking-widest mt-2 font-light">La cantina del Piantavigna</h2>
+        <div id="status-loading" class="text-xs uppercase tracking-widest text-[#ff007f] font-bold mt-4 animate-pulse">Caricamento cantina...</div>
+    </header>
+
+    <!-- FILTRI E RICERCA -->
+    <section class="mb-8 flex flex-col md:flex-row gap-4">
+        <input type="text" id="search-bar" oninput="renderWines()" placeholder="CERCA PER NOME, ZONA, REGIONE..." class="w-full md:w-2/3 bg-white text-black placeholder-stone-400 p-3 rounded-none border-2 border-black focus:outline-none focus:border-[#ff007f] text-sm font-semibold uppercase tracking-wider transition">
+        
+        <div class="flex gap-2 overflow-x-auto pb-2 md:pb-0">
+            <button onclick="filterType('Tutti')" class="filter-btn px-5 py-2 bg-black text-white rounded-none text-xs font-bold uppercase tracking-widest whitespace-nowrap border-2 border-black">Tutti</button>
+            <button onclick="filterType('Rosso')" class="filter-btn px-5 py-2 bg-white text-black hover:border-[#ff007f] rounded-none text-xs font-bold uppercase tracking-widest whitespace-nowrap border-2 border-black transition">Rossi</button>
+            <button onclick="filterType('Bianco')" class="filter-btn px-5 py-2 bg-white text-black hover:border-[#ff007f] rounded-none text-xs font-bold uppercase tracking-widest whitespace-nowrap border-2 border-black transition">Bianchi</button>
+            <button onclick="filterType('Bollicine')" class="filter-btn px-5 py-2 bg-white text-black hover:border-[#ff007f] rounded-none text-xs font-bold uppercase tracking-widest whitespace-nowrap border-2 border-black transition">Bollicine</button>
+        </div>
+    </section>
+
+    <!-- LISTA DEI VINI -->
+    <main id="wine-list" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- I vini compariranno qui -->
+    </main>
+
+    <!-- FINESTRA DETTAGLI (MODAL ROSA FLUO / BLACK) -->
+    <div id="wine-modal" class="fixed inset-0 bg-black/80 backdrop-blur-xs hidden z-50 items-center justify-center p-4" onclick="closeModal()">
+        <div class="bg-white text-black p-6 md:p-8 rounded-none max-w-lg w-full border-4 border-black shadow-[8px_8px_0px_0px_#ff007f] relative" onclick="event.stopPropagation()">
+            <button onclick="closeModal()" class="absolute top-2 right-4 text-black hover:text-[#ff007f] text-3xl font-bold">&times;</button>
+            
+            <div id="modal-badge-container" class="mt-2"></div>
+            <h3 id="modal-wine-name" class="font-piantavigna text-3xl md:text-4xl text-black mt-3 font-bold leading-none tracking-wide"></h3>
+            <p id="modal-wine-cantina" class="text-stone-600 text-sm uppercase tracking-wider mt-1 font-semibold"></p>
+            
+            <div class="border-t-2 border-black my-4 pt-4 space-y-1 text-xs uppercase tracking-wider font-semibold">
+                <p id="modal-wine-geo" class="text-black"></p>
+                <p id="modal-wine-price" class="text-[#ff007f] font-black text-2xl pt-2 font-sans"></p>
+            </div>
+            
+            <div class="bg-stone-50 p-4 border-2 border-black mt-4">
+                <h4 class="text-xs uppercase tracking-widest text-[#ff007f] font-bold mb-1">Nota di Degustazione</h4>
+                <p id="modal-wine-desc" class="text-stone-800 text-sm leading-relaxed font-medium"></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/17O5LVhc-iiQSwvMl7iWxgENIxnfaUJx1sJrTTyzRYTE/edit?hl=it&gid=0#gid=0";
+
+        let wines = [];
+        let currentFilter = 'Tutti';
+        let isLoaded = false;
+
+        function shuffleWines(array) {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
+
+        window.googleDocCallback = function(data) {
+            isLoaded = true;
+            const statusEl = document.getElementById('status-loading');
+            
+            try {
+                if (!data || !data.table || !data.table.rows) {
+                    statusEl.innerText = "🔴 IL FOGLIO RISPONDE MA SEMBRA VUOTO.";
+                    return;
+                }
+
+                const rows = data.table.rows;
+                const cols = data.table.cols.map(c => c.label ? c.label.toLowerCase().trim() : '');
+                
+                if (!cols.includes('nome')) {
+                    statusEl.innerHTML = "⚠️ Manca la colonna 'nome' nel foglio Google.";
+                    return;
+                }
+
+                const parsedWines = rows.map(row => {
+                    const obj = {};
+                    if (row && row.c) {
+                        row.c.forEach((cell, i) => {
+                            const header = cols[i];
+                            if (header) {
+                                obj[header] = cell ? cell.v : '';
+                            }
+                        });
+                    }
+
+                    return {
+                        nome: obj.nome ? String(obj.nome) : '',
+                        cantina: obj.cantina ? String(obj.cantina) : '',
+                        tipo: obj.tipo ? String(obj.tipo) : '',
+                        regione: obj.regione ? String(obj.regione) : '',
+                        zona: obj.zona ? String(obj.zona) : '',
+                        anno: obj.anno ? parseInt(obj.anno) : '',
+                        prezzo: obj.prezzo ? parseFloat(obj.prezzo) : 0,
+                        disponibile: obj.disponibile !== undefined && obj.disponibile !== null ? (String(obj.disponibile).toUpperCase() === 'TRUE') : true,
+                        doc: obj.doc ? String(obj.doc) : '' ,
+                        descrizione: obj.descrizione ? String(obj.descrizione) : ''
+                    };
+                });
+
+                wines = shuffleWines(parsedWines);
+                statusEl.innerText = "🟢 CANTINA AGGIORNATA";
+                renderWines();
+            } catch (error) {
+                console.error(error);
+                statusEl.innerText = "🔴 ERRORE DURANTE L'ELABORAZIONE DATI.";
+            }
+        };
+
+        function loadDataViaJSONP() {
+            const statusEl = document.getElementById('status-loading');
+            const matches = GOOGLE_SHEET_URL.match(/\/d\/([^/]+)/);
+            
+            if (!matches || !matches[1]) {
+                statusEl.innerText = "🔴 LINK FOGLIO NON VALIDO.";
+                return;
+            }
+            
+            const realID = matches[1];
+            const scriptUrl = `https://docs.google.com/spreadsheets/d/${realID}/gviz/tq?tqx=responseHandler:googleDocCallback`;
+            
+            const script = document.createElement('script');
+            script.src = scriptUrl;
+            document.body.appendChild(script);
+
+            setTimeout(() => {
+                if (!isLoaded) {
+                    statusEl.innerHTML = "⏳ TEMPO SCADUTO. <button onclick='location.reload()' class='underline font-bold text-black ml-1'>RICARICA</button>";
+                }
+            }, 6000);
+        }
+
+        function filterType(type) {
+            currentFilter = type;
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('bg-black', 'text-white');
+                btn.classList.add('bg-white', 'text-black');
+            });
+            event.target.classList.remove('bg-white', 'text-black');
+            event.target.classList.add('bg-black', 'text-white');
+            renderWines();
+        }
+
+        function openModal(index) {
+            const w = wines[index];
+            if (!w.descrizione.trim()) return;
+
+            document.getElementById('modal-badge-container').innerHTML = `<span class="text-[10px] font-bold px-2 py-0.5 bg-black text-white uppercase tracking-widest border border-black">${w.tipo}</span> ${w.doc ? `<span class="text-[10px] font-bold px-2 py-0.5 border-2 border-black uppercase tracking-widest ml-1">${w.doc}</span>` : ''}`;
+            document.getElementById('modal-wine-name').innerHTML = `${w.nome} <span class="text-xl font-light text-stone-500 font-sans ml-1">${w.anno}</span>`;
+            document.getElementById('modal-wine-cantina').innerText = w.cantina;
+            document.getElementById('modal-wine-geo').innerHTML = `📍 ZONA: ${w.zona || 'N/D'} &bull; REGIONE: ${w.regione}`;
+            document.getElementById('modal-wine-price').innerText = `${w.prezzo.toFixed(2)} €`;
+            document.getElementById('modal-wine-desc').innerText = w.descrizione;
+            
+            const modal = document.getElementById('wine-modal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeModal() {
+            const modal = document.getElementById('wine-modal');
+            modal.classList.remove('flex');
+            modal.classList.add('hidden');
+        }
+
+        function renderWines() {
+            const container = document.getElementById('wine-list');
+            const searchQuery = document.getElementById('search-bar').value.toLowerCase();
+            container.innerHTML = '';
+
+            const filtered = wines.map((w, index) => ({...w, originalIndex: index})).filter(w => {
+                const matchesFilter = currentFilter === 'Tutti' || w.tipo === currentFilter;
+                const matchesSearch = w.nome.toLowerCase().includes(searchQuery) || 
+                                      w.cantina.toLowerCase().includes(searchQuery) || 
+                                      w.regione.toLowerCase().includes(searchQuery) ||
+                                      w.zona.toLowerCase().includes(searchQuery) ||
+                                      w.doc.toLowerCase().includes(searchQuery);
+                return matchesFilter && matchesSearch && w.disponibile;
+            });
+
+            if(filtered.length === 0) {
+                container.innerHTML = `<p class="col-span-full text-center text-stone-500 py-8 font-bold uppercase tracking-widest text-xs">Nessun vino trovato.</p>`;
+                return;
+            }
+
+            filtered.forEach(w => {
+                const docBadge = w.doc ? `<span class="text-[10px] font-bold tracking-widest border-2 border-black text-black px-1.5 py-0.2 ml-2 uppercase">${w.doc}</span>` : '';
+                const geoString = w.zona ? `${w.zona} &bull; ${w.regione}` : w.regione;
+                
+                const hasDesc = w.descrizione.trim() !== "";
+                const clickAttribute = hasDesc ? `onclick="openModal(${w.originalIndex})"` : '';
+                const clickableClass = hasDesc ? 'cursor-pointer hover:border-[#ff007f] hover:shadow-[4px_4px_0px_0px_#ff007f] active:translate-y-0.5' : '';
+                const infoIndicator = hasDesc ? `<span class="text-[9px] font-bold text-[#ff007f] mt-3 block uppercase tracking-widest">&bull; INFO DEGUSTAZIONE</span>` : '';
+
+                container.innerHTML += `
+                    <div ${clickAttribute} class="bg-white p-5 rounded-none border-2 border-black flex flex-col justify-between transition-all duration-150 ${clickableClass}">
+                        <div>
+                            <div class="flex justify-between items-start gap-2">
+                                <span class="text-[10px] font-bold px-2 py-0.5 bg-black text-white uppercase tracking-widest">${w.tipo}</span>
+                                <span class="text-[#ff007f] font-bold text-lg font-sans">${w.prezzo.toFixed(2)} €</span>
+                            </div>
+                            <h3 class="font-piantavigna text-3xl text-black mt-3 font-bold leading-none tracking-wide flex items-baseline flex-wrap">
+                                ${w.nome} 
+                                <span class="text-sm font-sans text-stone-400 ml-2 font-normal">${w.anno}</span>
+                                ${docBadge}
+                            </h3>
+                            <p class="text-stone-500 text-xs mt-1 uppercase tracking-wider font-semibold">${w.cantina}</p>
+                            <p class="text-black text-xs mt-3 flex items-center gap-1 font-bold uppercase tracking-wider">📍 ${geoString}</p>
+                            ${infoIndicator}
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        loadDataViaJSONP();
+    </script>
+</body>
+</html>
